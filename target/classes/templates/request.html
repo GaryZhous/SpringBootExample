@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Request Page</title>
+    <link rel="stylesheet" th:href="@{/style2.css}">
+</head>
+<body>
+
+    <div class="container">
+        <h1>Request Page</h1>
+        <p>We have unlimited resources!</p>
+        <div class="form-container">
+            <label for="name">Enter Your Name:</label>
+            <input type="text" id="name" name="name" placeholder="Your Name">
+            
+            <label for="address">Enter Address:</label>
+            <input type="text" id="address" name="address" placeholder="address">
+            
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Select Resources</h2>
+        <div class="image-grid">
+            <div class="image-box">
+                <img src="/images/blanket.jpg" alt="Item 1">
+                <input type="number" id="amount1" placeholder="Enter Amount">
+            </div>
+            <div class="image-box">
+                <img src="/images/instanoodle.jpg" alt="Item 2">
+                <input type="number" id="amount2" placeholder="Enter Amount">
+            </div>
+            <div class="image-box">
+                <img src="/images/toiletpaper.avif" alt="Item 3">
+                <input type="number" id="amount3" placeholder="Enter Amount">
+            </div>
+            <div class="image-box">
+                <img src="/images/bottledwater.png" alt="Item 4">
+                <input type="number" id="amount4" placeholder="Enter Amount">
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <button class="send-button" onclick="sendRequest()">Send Request</button>
+    </div>
+
+    <script>
+        function sendRequest() {
+            const name = document.getElementById("name").value;
+            const address = document.getElementById("address").value;
+            const amount1 = document.getElementById("amount1").value || 0;
+            const amount2 = document.getElementById("amount2").value || 0;
+            const amount3 = document.getElementById("amount3").value || 0;
+            const amount4 = document.getElementById("amount4").value || 0;
+
+            const requestData = {
+                name: name,
+                address: address,
+                towel: parseInt(amount1, 10),
+                instantNoodles: parseInt(amount2, 10),
+                tissuePaper: parseInt(amount3, 10),
+                water: parseInt(amount4, 10)
+            };
+
+            fetch("/api/send-request", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(requestData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert("Request sent successfully!");
+                console.log("Success:", data);
+            })
+            .catch(error => {
+                alert("Error sending request.");
+                console.error("Error:", error);
+            });
+        }
+    </script>
+
+</body>
+</html>
