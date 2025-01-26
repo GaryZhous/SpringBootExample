@@ -1,5 +1,5 @@
 # SpringBootExample
-Basic Crud application made in SpringBoot with a simple html frontend.
+Basic CRUD application made in SpringBoot with a simple html frontend.
 ## Brief Overview
 ### Frontend
 Users can load info and send a post request to the backend at the request page by clicking the send button.
