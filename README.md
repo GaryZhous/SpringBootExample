@@ -9,6 +9,8 @@ Users can load info and send a post request to the backend at the request page b
 1. Use of MySQL database for data storage.
 2. Use of MyBatis-plus to handle entity mapping and smooth interaction with the MySQL database.
 3. Use of Google's SMTP service to automate the email sending service.
+
+
 PS: the database service is just a mockup, please implement your own database service based on your needs and store all the credentials in application.properties!
 ### Port Forwarding
 You can use Serveo to expose your port to the public instead of sharing your IP address :)
