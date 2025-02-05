@@ -7,7 +7,7 @@ This is a very rough prototype of a disaster relief web app. Users can send requ
 Users can load info and send a post request to the backend at the request page by clicking the send button.
 ### Backend
 1. Use of MySQL database for data storage.
-2. Use of MyBatis-plus to handle entity mapping and smooth interaction with the MySQL database.
+2. Use of Jackson-DataBind to handle entity mapping and smooth interaction with the MySQL database.
 3. Use of Google's SMTP service to automate the email sending service.
 
 PS: the database service is just a mockup, please implement your own database service based on your needs and store all the credentials in application.properties!
