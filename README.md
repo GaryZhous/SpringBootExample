@@ -12,4 +12,4 @@ Users can load info and send a post request to the backend at the request page b
 
 PS: the database service is just a mockup, please implement your own database service based on your needs and store all the credentials in application.properties!
 ### Port Forwarding
-You can use Serveo to expose your port to the public instead of sharing your IP address :)
+You can use port fowarding services like Serveo to expose your port to the public instead of sharing your IP address :)
