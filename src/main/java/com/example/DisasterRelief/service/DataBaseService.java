@@ -1,7 +1,7 @@
 package com.example.DisasterRelief.service;
 
 /*mockup database service using jackson databind*/
-import com.example.DisasterRelief.Entity.Resources;
+import com.example.DisasterRelief.Entity.Subscription;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
@@ -12,7 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Service
-public class MockDatabaseService {
+public class DataBaseService {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final File file = new File("data.json");
 
