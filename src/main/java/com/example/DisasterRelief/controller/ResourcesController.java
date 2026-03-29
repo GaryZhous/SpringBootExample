@@ -1,16 +1,19 @@
 package com.example.DisasterRelief.controller;
 
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.HtmlUtils;
 
 import com.example.DisasterRelief.service.EmailService;
+import com.example.DisasterRelief.service.IdempotencyService;
 
 import jakarta.mail.MessagingException;
 
@@ -21,8 +24,22 @@ public class ResourcesController {
     @Autowired
     private EmailService emailService;
 
+    @Autowired
+    private IdempotencyService idempotencyService;
+
     @PostMapping("/send-request")
-    public ResponseEntity<Map<String, String>> handleRequest(@RequestBody Map<String, Object> requestData) throws MessagingException {
+    public ResponseEntity<Map<String, String>> handleRequest(
+            @RequestBody Map<String, Object> requestData,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey)
+            throws MessagingException {
+
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            Optional<Map<String, String>> cached = idempotencyService.findByKey(idempotencyKey);
+            if (cached.isPresent()) {
+                return ResponseEntity.ok(cached.get());
+            }
+        }
+
         String name = HtmlUtils.htmlEscape((String) requestData.getOrDefault("name", "Unknown"));
         String address = HtmlUtils.htmlEscape((String) requestData.getOrDefault("address", "Unknown"));
         int towel = safeParseInt(requestData.get("towel"));
@@ -54,7 +71,14 @@ public class ResourcesController {
         "</body>" +
         "</html>";
         emailService.sendEmail("sihan.zhou@mail.utoronto.ca", "Disaster Relief Request from " + name, htmlContent);
-        return ResponseEntity.ok(Map.of("message", "Request received successfully!"));
+
+        Map<String, String> response = Map.of("message", "Request received successfully!");
+
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            idempotencyService.store(idempotencyKey, response);
+        }
+
+        return ResponseEntity.ok(response);
     }
 
     private int safeParseInt(Object value) {

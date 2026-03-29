@@ -4,6 +4,8 @@ package com.example.DisasterRelief.service;
 import com.example.DisasterRelief.Entity.Subscription;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -16,7 +18,29 @@ public class DataBaseService {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final File file = new File("data.json");
 
+    @Cacheable("subscriptions")
     public List<Subscription> getAllSubscriptions() {
+        return readFromFile();
+    }
+
+    @CacheEvict(value = "subscriptions", allEntries = true)
+    public void saveSubscription(Subscription subscription) {
+        List<Subscription> subscriptions = readFromFile();
+        subscriptions.add(subscription);
+        writeToFile(subscriptions);
+    }
+
+    @CacheEvict(value = "subscriptions", allEntries = true)
+    public boolean deleteSubscription(String email) {
+        List<Subscription> subscriptions = readFromFile();
+        boolean removed = subscriptions.removeIf(sub -> sub.getEmail().equals(email));
+        if (removed) {
+            writeToFile(subscriptions);
+        }
+        return removed;
+    }
+
+    private List<Subscription> readFromFile() {
         try {
             if (!file.exists()) {
                 return new ArrayList<>();
@@ -26,21 +50,6 @@ public class DataBaseService {
             e.printStackTrace();
             return new ArrayList<>();
         }
-    }
-
-    public void saveSubscription(Subscription subscription) {
-        List<Subscription> subscriptions = getAllSubscriptions();
-        subscriptions.add(subscription);
-        writeToFile(subscriptions);
-    }
-
-    public boolean deleteSubscription(String email) {
-        List<Subscription> subscriptions = getAllSubscriptions();
-        boolean removed = subscriptions.removeIf(sub -> sub.getEmail().equals(email));
-        if (removed) {
-            writeToFile(subscriptions);
-        }
-        return removed;
     }
 
     private void writeToFile(List<Subscription> subscriptions) {
