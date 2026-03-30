@@ -13,6 +13,7 @@ A Spring Boot prototype for coordinating disaster relief resource requests. User
 - [Building & Running](#building--running)
 - [Usage](#usage)
 - [API Reference](#api-reference)
+- [Caching & Idempotency](#caching--idempotency)
 - [Project Structure](#project-structure)
 - [Known Limitations & Future Work](#known-limitations--future-work)
 
@@ -20,20 +21,21 @@ A Spring Boot prototype for coordinating disaster relief resource requests. User
 
 ## Overview
 
-This application provides a minimal web front end and REST back end for managing disaster relief supply requests, targeted at flood-impacted regions. When a user submits a request, the backend sends an HTML-formatted confirmation email via Gmail's SMTP service.
+This application provides a minimal web front end and REST back end for managing disaster relief supply requests, targeted at flood-impacted regions. When a user submits a request, the backend sends an HTML-formatted confirmation email via Gmail's SMTP service. The application also includes a JSON-file-backed subscription store with Caffeine caching, and supports idempotent request processing via a client-supplied `Idempotency-Key` header.
 
 ---
 
 ## Tech Stack
 
-| Layer       | Technology                                      |
-|-------------|-------------------------------------------------|
-| Language    | Java 17                                         |
-| Framework   | Spring Boot 3.4.1                               |
-| Templating  | Thymeleaf                                       |
-| Email       | Spring Boot Mail + Jakarta Mail (Gmail SMTP)    |
-| Data (mock) | Jackson ObjectMapper backed by a local JSON file|
-| Build       | Maven (Maven Wrapper included)                  |
+| Layer         | Technology                                           |
+|---------------|------------------------------------------------------|
+| Language      | Java 17                                              |
+| Framework     | Spring Boot 3.4.1                                    |
+| Templating    | Thymeleaf                                            |
+| Email         | Spring Boot Mail + Jakarta Mail (Gmail SMTP)         |
+| Data (mock)   | Jackson ObjectMapper backed by a local JSON file     |
+| Caching       | Spring Cache + Caffeine (managed by Spring Boot BOM) |
+| Build         | Maven (Maven Wrapper included)                       |
 
 ---
 
@@ -108,6 +110,12 @@ Once started, open your browser at `http://localhost:8080`.
 
 ### `POST /api/send-request`
 
+**Optional request header:**
+
+| Header            | Description                                                                                     |
+|-------------------|-------------------------------------------------------------------------------------------------|
+| `Idempotency-Key` | A unique client-generated key (e.g. UUID). If supplied, duplicate requests with the same key return the cached response without resending the email. |
+
 **Request body (JSON):**
 
 ```json
@@ -125,39 +133,70 @@ Once started, open your browser at `http://localhost:8080`.
 
 ```json
 {
-  "message": "Request sent successfully!"
+  "message": "Request received successfully!"
 }
 ```
+
+---
+
+## Caching & Idempotency
+
+Spring Cache is enabled via `@EnableCaching` on the main application class and is backed by [Caffeine](https://github.com/ben-manes/caffeine) caches configured in `CacheConfig`:
+
+| Cache name      | TTL    | Max entries | Purpose                                              |
+|-----------------|--------|-------------|------------------------------------------------------|
+| `subscriptions` | 10 min | 500         | Caches `DataBaseService.getAllSubscriptions()` results; evicted on write or delete. |
+| `idempotency`   | 24 h   | 10 000      | Stores responses keyed by `Idempotency-Key` headers to prevent duplicate email sends. |
+
+**How idempotency works:**
+
+1. The client includes an `Idempotency-Key: <uuid>` header in the `POST /api/send-request` request.
+2. If the key has been seen before (and has not yet expired), the cached response is returned immediately and no email is sent.
+3. If the key is new, the request is processed normally, the email is sent, and the response is stored in the `idempotency` cache for 24 hours.
+4. After the 24-hour TTL elapses the key is evicted, so a subsequent request using the same key will be treated as a brand-new request and will trigger a new email.
+5. Requests without an `Idempotency-Key` header are always processed (no deduplication).
 
 ---
 
 ## Project Structure
 
 ```
-src/main/
-├── java/com/example/DisasterRelief/
-│   ├── DisasterReliefApplication.java   # Application entry point
-│   ├── Entity/
-│   │   └── Resources.java               # Placeholder entity class
-│   ├── controller/
-│   │   ├── HomeController.java          # GET /
-│   │   ├── RequestController.java       # GET /request
-│   │   ├── ResourcesController.java     # POST /api/send-request
-│   │   └── UserController.java          # Skeleton (future user management)
-│   └── service/
-│       ├── EmailService.java            # Sends HTML emails via Gmail SMTP
-│       ├── DataBaseService.java         # Mock JSON-file persistence layer
-│       └── UserService.java             # Skeleton (future user logic)
+src/
+├── main/
+│   └── java/com/example/DisasterRelief/
+│       ├── DisasterReliefApplication.java   # Application entry point; enables caching (@EnableCaching)
+│       ├── Entity/
+│       │   ├── Resources.java               # Placeholder entity class
+│       │   └── Subscription.java            # Subscription entity (name, email, address)
+│       ├── config/
+│       │   └── CacheConfig.java             # Caffeine cache configuration (subscriptions + idempotency)
+│       ├── controller/
+│       │   ├── HomeController.java          # GET /
+│       │   ├── RequestController.java       # GET /request
+│       │   ├── ResourcesController.java     # POST /api/send-request (with idempotency support)
+│       │   └── UserController.java          # Skeleton (future user management)
+│       └── service/
+│           ├── DataBaseService.java         # JSON-file persistence with @Cacheable/@CacheEvict
+│           ├── EmailService.java            # Sends HTML emails via Gmail SMTP
+│           ├── IdempotencyService.java      # Idempotency key lookup and storage
+│           └── UserService.java             # Skeleton (future user logic)
 └── resources/
-    ├── application.properties           # App configuration & email credentials
+    ├── application.properties               # App configuration & email credentials
     ├── templates/
-    │   ├── index.html                   # Home page template
-    │   └── request.html                 # Request form template
+    │   ├── index.html                       # Home page template
+    │   └── request.html                     # Request form template
     └── static/
-        ├── style.css                    # Home page styles
-        ├── style2.css                   # Request page styles
-        ├── background.jpg               # Background image
-        └── images/                      # Supply images
+        ├── style.css                        # Home page styles
+        ├── style2.css                       # Request page styles
+        ├── background.jpg                   # Background image
+        └── images/                          # Supply images
+
+src/
+└── test/
+    └── java/com/example/DisasterRelief/
+        ├── DisasterReliefApplicationTests.java  # Context load smoke test
+        ├── CachingTest.java                     # Verifies @Cacheable/@CacheEvict behaviour
+        └── IdempotencyTest.java                 # Verifies idempotency key deduplication
 ```
 
 ---
@@ -165,7 +204,7 @@ src/main/
 ## Known Limitations & Future Work
 
 - **Mock database:** The current persistence layer writes to a local `data.json` file. Replace `DataBaseService` with a real database (e.g., MySQL / PostgreSQL) and configure the data source in `application.properties`.
-- **Hardcoded email values:** The confirmation email currently contains hardcoded resource amounts and a recipient address. These should be driven by the actual request data and made configurable.
-- **No input validation:** Add server-side validation (e.g., via `jakarta.validation`) to sanitize user inputs before processing.
+- **Hardcoded recipient email:** The confirmation email is sent to a hardcoded recipient address inside `ResourcesController`. This should be made configurable (e.g., driven by the request payload or an `application.properties` value).
+- **Basic input sanitisation:** User-supplied `name` and `address` fields are sanitised with `HtmlUtils.htmlEscape` to prevent XSS in email content. Full server-side validation (e.g., via `jakarta.validation`) is not yet implemented.
 - **User management:** `UserController` and `UserService` are empty stubs intended for future authentication / user profile features.
 - **Port forwarding:** To expose the application publicly without sharing your IP, you can use a tunneling service such as [ngrok](https://ngrok.com/) or [Serveo](https://serveo.net/).
