@@ -18,7 +18,8 @@ public class CacheConfig {
         SimpleCacheManager cacheManager = new SimpleCacheManager();
         cacheManager.setCaches(List.of(
                 buildCache("subscriptions", 10, TimeUnit.MINUTES, 500),
-                buildCache("idempotency", 24, TimeUnit.HOURS, 10_000)
+                buildCache("idempotency", 24, TimeUnit.HOURS, 10_000),
+                buildCache("users", 10, TimeUnit.MINUTES, 1_000)
         ));
         return cacheManager;
     }

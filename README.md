@@ -13,6 +13,7 @@ A Spring Boot prototype for coordinating disaster relief resource requests. User
 - [Building & Running](#building--running)
 - [Usage](#usage)
 - [API Reference](#api-reference)
+- [User Management API](#user-management-api)
 - [Caching & Idempotency](#caching--idempotency)
 - [Project Structure](#project-structure)
 - [Known Limitations & Future Work](#known-limitations--future-work)
@@ -21,7 +22,7 @@ A Spring Boot prototype for coordinating disaster relief resource requests. User
 
 ## Overview
 
-This application provides a minimal web front end and REST back end for managing disaster relief supply requests, targeted at flood-impacted regions. When a user submits a request, the backend sends an HTML-formatted confirmation email via Gmail's SMTP service. The application also includes a JSON-file-backed subscription store with Caffeine caching, and supports idempotent request processing via a client-supplied `Idempotency-Key` header.
+This application provides a minimal web front end and REST back end for managing disaster relief supply requests, targeted at flood-impacted regions. When a user submits a request, the backend sends an HTML-formatted confirmation email via Gmail's SMTP service. The application also includes a JSON-file-backed subscription store with Caffeine caching, idempotent request processing via a client-supplied `Idempotency-Key` header, and a full user management API.
 
 ---
 
@@ -139,6 +140,69 @@ Once started, open your browser at `http://localhost:8080`.
 
 ---
 
+## User Management API
+
+User data is persisted in a local `users.json` file and cached in the `users` Caffeine cache (10-minute TTL, up to 1 000 entries). Each user has a server-assigned UUID, a username, an email address, and a role (`USER` or `ADMIN`).
+
+| Method | Endpoint            | Description              |
+|--------|---------------------|--------------------------|
+| GET    | `/api/users`        | List all users           |
+| GET    | `/api/users/{id}`   | Get a user by id         |
+| POST   | `/api/users`        | Create a new user        |
+| PUT    | `/api/users/{id}`   | Update an existing user  |
+| DELETE | `/api/users/{id}`   | Delete a user            |
+
+### `POST /api/users` — Create a user
+
+**Request body (JSON):**
+
+```json
+{
+  "username": "jane",
+  "email": "jane@example.com",
+  "role": "USER"
+}
+```
+
+> `username` and `email` are required. `role` defaults to `USER` when omitted.
+
+**Success response (`200 OK`):**
+
+```json
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "username": "jane",
+  "email": "jane@example.com",
+  "role": "USER"
+}
+```
+
+**Error response (`400 Bad Request`):**
+
+```json
+{
+  "error": "username and email are required"
+}
+```
+
+### `PUT /api/users/{id}` — Update a user
+
+Accepts the same JSON body as the create endpoint. Returns `404 Not Found` if no user with the given id exists.
+
+### `DELETE /api/users/{id}`
+
+**Success response (`200 OK`):**
+
+```json
+{
+  "message": "User deleted successfully"
+}
+```
+
+Returns `404 Not Found` if no user with the given id exists.
+
+---
+
 ## Caching & Idempotency
 
 Spring Cache is enabled via `@EnableCaching` on the main application class and is backed by [Caffeine](https://github.com/ben-manes/caffeine) caches configured in `CacheConfig`:
@@ -147,6 +211,7 @@ Spring Cache is enabled via `@EnableCaching` on the main application class and i
 |-----------------|--------|-------------|------------------------------------------------------|
 | `subscriptions` | 10 min | 500         | Caches `DataBaseService.getAllSubscriptions()` results; evicted on write or delete. |
 | `idempotency`   | 24 h   | 10 000      | Stores responses keyed by `Idempotency-Key` headers to prevent duplicate email sends. |
+| `users`         | 10 min | 1 000       | Caches `UserService.getAllUsers()` results; evicted on create, update, or delete. |
 
 **How idempotency works:**
 
@@ -167,19 +232,20 @@ src/
 │       ├── DisasterReliefApplication.java   # Application entry point; enables caching (@EnableCaching)
 │       ├── Entity/
 │       │   ├── Resources.java               # Placeholder entity class
-│       │   └── Subscription.java            # Subscription entity (name, email, address)
+│       │   ├── Subscription.java            # Subscription entity (name, email, address)
+│       │   └── User.java                    # User entity (id, username, email, role)
 │       ├── config/
-│       │   └── CacheConfig.java             # Caffeine cache configuration (subscriptions + idempotency)
+│       │   └── CacheConfig.java             # Caffeine cache configuration (subscriptions + idempotency + users)
 │       ├── controller/
 │       │   ├── HomeController.java          # GET /
 │       │   ├── RequestController.java       # GET /request
 │       │   ├── ResourcesController.java     # POST /api/send-request (with idempotency support)
-│       │   └── UserController.java          # Skeleton (future user management)
+│       │   └── UserController.java          # CRUD /api/users endpoints
 │       └── service/
 │           ├── DataBaseService.java         # JSON-file persistence with @Cacheable/@CacheEvict
 │           ├── EmailService.java            # Sends HTML emails via Gmail SMTP
 │           ├── IdempotencyService.java      # Idempotency key lookup and storage
-│           └── UserService.java             # Skeleton (future user logic)
+│           └── UserService.java             # User CRUD logic backed by users.json
 └── resources/
     ├── application.properties               # App configuration & email credentials
     ├── templates/
@@ -196,15 +262,16 @@ src/
     └── java/com/example/DisasterRelief/
         ├── DisasterReliefApplicationTests.java  # Context load smoke test
         ├── CachingTest.java                     # Verifies @Cacheable/@CacheEvict behaviour
-        └── IdempotencyTest.java                 # Verifies idempotency key deduplication
+        ├── IdempotencyTest.java                 # Verifies idempotency key deduplication
+        └── UserManagementTest.java              # Verifies user CRUD and cache behaviour
 ```
 
 ---
 
 ## Known Limitations & Future Work
 
-- **Mock database:** The current persistence layer writes to a local `data.json` file. Replace `DataBaseService` with a real database (e.g., MySQL / PostgreSQL) and configure the data source in `application.properties`.
+- **Mock database:** The current persistence layer writes to local JSON files (`data.json`, `users.json`). Replace `DataBaseService` and `UserService` with a real database (e.g., MySQL / PostgreSQL) and configure the data source in `application.properties`.
 - **Hardcoded recipient email:** The confirmation email is sent to a hardcoded recipient address inside `ResourcesController`. This should be made configurable (e.g., driven by the request payload or an `application.properties` value).
-- **Basic input sanitisation:** User-supplied `name` and `address` fields are sanitised with `HtmlUtils.htmlEscape` to prevent XSS in email content. Full server-side validation (e.g., via `jakarta.validation`) is not yet implemented.
-- **User management:** `UserController` and `UserService` are empty stubs intended for future authentication / user profile features.
+- **Basic input sanitisation:** User-supplied fields are sanitised with `HtmlUtils.htmlEscape` to prevent XSS. Full server-side validation (e.g., via `jakarta.validation`) is not yet implemented.
+- **No authentication:** The user management API is currently open. Adding Spring Security (JWT / session-based auth) and role-based access control is recommended before any production use.
 - **Port forwarding:** To expose the application publicly without sharing your IP, you can use a tunneling service such as [ngrok](https://ngrok.com/) or [Serveo](https://serveo.net/).
