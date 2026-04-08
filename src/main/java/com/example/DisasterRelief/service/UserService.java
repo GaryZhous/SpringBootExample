@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -19,6 +20,11 @@ public class UserService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final File file = new File("users.json");
+    private final PasswordEncoder passwordEncoder;
+
+    public UserService(PasswordEncoder passwordEncoder) {
+        this.passwordEncoder = passwordEncoder;
+    }
 
     @Cacheable("users")
     public List<User> getAllUsers() {
@@ -31,10 +37,24 @@ public class UserService {
                 .findFirst();
     }
 
+    public Optional<User> getUserByUsername(String username) {
+        return readFromFile().stream()
+                .filter(u -> u.getUsername().equals(username))
+                .findFirst();
+    }
+
     @CacheEvict(value = "users", allEntries = true)
     public User createUser(String username, String email, String role) {
+        return createUser(username, email, role, null);
+    }
+
+    @CacheEvict(value = "users", allEntries = true)
+    public User createUser(String username, String email, String role, String rawPassword) {
         List<User> users = readFromFile();
-        User user = new User(UUID.randomUUID().toString(), username, email, role);
+        String hashedPassword = (rawPassword != null && !rawPassword.isBlank())
+                ? passwordEncoder.encode(rawPassword)
+                : null;
+        User user = new User(UUID.randomUUID().toString(), username, email, role, hashedPassword);
         users.add(user);
         writeToFile(users);
         return user;
@@ -85,3 +105,4 @@ public class UserService {
         }
     }
 }
+
