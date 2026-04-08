@@ -6,6 +6,8 @@ public class User {
     private String username;
     private String email;
     private String role;
+    /** BCrypt-hashed password. Never returned in API responses. */
+    private String password;
 
     public User() {}
 
@@ -14,6 +16,14 @@ public class User {
         this.username = username;
         this.email = email;
         this.role = role;
+    }
+
+    public User(String id, String username, String email, String role, String password) {
+        this.id = id;
+        this.username = username;
+        this.email = email;
+        this.role = role;
+        this.password = password;
     }
 
     public String getId() {
@@ -46,5 +56,13 @@ public class User {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
     }
 }

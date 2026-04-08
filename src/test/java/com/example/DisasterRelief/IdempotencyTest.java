@@ -8,6 +8,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Map;
@@ -37,6 +38,7 @@ class IdempotencyTest {
             """;
 
     @Test
+    @WithMockUser(roles = "USER")
     void sameIdempotencyKeyReturnsIdenticalResponseWithoutResendingEmail() throws Exception {
         String key = UUID.randomUUID().toString();
 
@@ -58,6 +60,7 @@ class IdempotencyTest {
     }
 
     @Test
+    @WithMockUser(roles = "USER")
     void differentIdempotencyKeysTriggerSeparateProcessing() throws Exception {
         String key1 = UUID.randomUUID().toString();
         String key2 = UUID.randomUUID().toString();
@@ -78,6 +81,7 @@ class IdempotencyTest {
     }
 
     @Test
+    @WithMockUser(roles = "USER")
     void requestWithoutIdempotencyKeyAlwaysProcesses() throws Exception {
         mockMvc.perform(post("/api/send-request")
                         .contentType(MediaType.APPLICATION_JSON)

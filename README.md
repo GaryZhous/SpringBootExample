@@ -12,6 +12,7 @@ A Spring Boot prototype for coordinating disaster relief resource requests. User
 - [Configuration](#configuration)
 - [Building & Running](#building--running)
 - [Usage](#usage)
+- [Authentication](#authentication)
 - [API Reference](#api-reference)
 - [User Management API](#user-management-api)
 - [Caching & Idempotency](#caching--idempotency)
@@ -22,7 +23,7 @@ A Spring Boot prototype for coordinating disaster relief resource requests. User
 
 ## Overview
 
-This application provides a minimal web front end and REST back end for managing disaster relief supply requests, targeted at flood-impacted regions. When a user submits a request, the backend sends an HTML-formatted confirmation email via Gmail's SMTP service. The application also includes a JSON-file-backed subscription store with Caffeine caching, idempotent request processing via a client-supplied `Idempotency-Key` header, and a full user management API.
+This application provides a minimal web front end and REST back end for managing disaster relief supply requests, targeted at flood-impacted regions. When a user submits a request, the backend sends an HTML-formatted confirmation email via Gmail's SMTP service. The application also includes a JSON-file-backed subscription store with Caffeine caching, idempotent request processing via a client-supplied `Idempotency-Key` header, a full user management API, and **JWT-based authentication with role-based access control**.
 
 ---
 
@@ -36,6 +37,7 @@ This application provides a minimal web front end and REST back end for managing
 | Email         | Spring Boot Mail + Jakarta Mail (Gmail SMTP)         |
 | Data (mock)   | Jackson ObjectMapper backed by a local JSON file     |
 | Caching       | Spring Cache + Caffeine (managed by Spring Boot BOM) |
+| Security      | Spring Security 6 + JWT (JJWT 0.12.6)               |
 | Build         | Maven (Maven Wrapper included)                       |
 
 ---
@@ -58,6 +60,15 @@ spring.mail.password=your-app-password
 ```
 
 > **Note:** Use a Gmail [App Password](https://support.google.com/accounts/answer/185833), not your regular account password. Never commit real credentials to source control – consider using environment variables or a secrets manager for production deployments.
+
+### JWT configuration
+
+```properties
+# Secret key used to sign JWT tokens – MUST be changed in production (min 32 characters)
+jwt.secret=your-strong-secret-key-at-least-32-chars
+# Token validity in milliseconds (default: 24 h)
+jwt.expiration-ms=86400000
+```
 
 To change the default port (8080), add the following line:
 
@@ -101,15 +112,82 @@ Once started, open your browser at `http://localhost:8080`.
 
 ---
 
+## Authentication
+
+The API uses **stateless JWT-based authentication**. All requests to protected endpoints must include a signed JWT in the `Authorization` header.
+
+### Roles
+
+| Role    | Description                                                    |
+|---------|----------------------------------------------------------------|
+| `USER`  | Can submit disaster relief requests (`POST /api/send-request`) |
+| `ADMIN` | Full access to all user management endpoints                   |
+
+### Login flow
+
+1. **Register** (self-registration, public): `POST /api/users`
+2. **Login**: `POST /api/auth/login` → receive a JWT
+3. **Use token**: include `Authorization: Bearer <token>` in every protected request
+
+### `POST /api/auth/login`
+
+**Request body (JSON):**
+
+```json
+{
+  "username": "alice",
+  "password": "secret"
+}
+```
+
+**Success response (`200 OK`):**
+
+```json
+{
+  "token": "<signed-jwt>"
+}
+```
+
+**Failure response (`401 Unauthorized`):**
+
+```json
+{
+  "error": "Invalid username or password"
+}
+```
+
+### Endpoint access matrix
+
+| Endpoint                     | Method | `USER` | `ADMIN` | Public |
+|------------------------------|--------|--------|---------|--------|
+| `/`                          | GET    | ✓      | ✓       | ✓      |
+| `/request`                   | GET    | ✓      | ✓       | ✓      |
+| `/api/auth/login`            | POST   | —      | —       | ✓      |
+| `/api/users`                 | POST   | —      | —       | ✓ (registration) |
+| `/api/send-request`          | POST   | ✓      | ✓       | ✗      |
+| `/api/users`                 | GET    | ✗      | ✓       | ✗      |
+| `/api/users/{id}`            | GET    | ✗      | ✓       | ✗      |
+| `/api/users/{id}`            | PUT    | ✗      | ✓       | ✗      |
+| `/api/users/{id}`            | DELETE | ✗      | ✓       | ✗      |
+
+---
+
 ## API Reference
 
 | Method | Endpoint            | Description                                            |
 |--------|---------------------|--------------------------------------------------------|
 | GET    | `/`                 | Renders the home page                                  |
 | GET    | `/request`          | Renders the resource-request form                      |
-| POST   | `/api/send-request` | Accepts a JSON request body and sends a confirmation email |
+| POST   | `/api/auth/login`   | Authenticate and receive a JWT                         |
+| POST   | `/api/send-request` | Accepts a JSON request body and sends a confirmation email (requires authentication) |
 
 ### `POST /api/send-request`
+
+**Required header:**
+
+| Header          | Description                                      |
+|-----------------|--------------------------------------------------|
+| `Authorization` | `Bearer <jwt>` — token obtained from `/api/auth/login` |
 
 **Optional request header:**
 
@@ -142,17 +220,17 @@ Once started, open your browser at `http://localhost:8080`.
 
 ## User Management API
 
-User data is persisted in a local `users.json` file and cached in the `users` Caffeine cache (10-minute TTL, up to 1 000 entries). Each user has a server-assigned UUID, a username, an email address, and a role (`USER` or `ADMIN`).
+User data is persisted in a local `users.json` file and cached in the `users` Caffeine cache (10-minute TTL, up to 1 000 entries). Each user has a server-assigned UUID, a username, an email address, a role (`USER` or `ADMIN`), and a BCrypt-hashed password. **Passwords are never included in API responses.**
 
-| Method | Endpoint            | Description              |
-|--------|---------------------|--------------------------|
-| GET    | `/api/users`        | List all users           |
-| GET    | `/api/users/{id}`   | Get a user by id         |
-| POST   | `/api/users`        | Create a new user        |
-| PUT    | `/api/users/{id}`   | Update an existing user  |
-| DELETE | `/api/users/{id}`   | Delete a user            |
+| Method | Endpoint            | Auth required | Description                |
+|--------|---------------------|---------------|----------------------------|
+| GET    | `/api/users`        | ADMIN         | List all users             |
+| GET    | `/api/users/{id}`   | ADMIN         | Get a user by id           |
+| POST   | `/api/users`        | None          | Self-register a new user   |
+| PUT    | `/api/users/{id}`   | ADMIN         | Update an existing user    |
+| DELETE | `/api/users/{id}`   | ADMIN         | Delete a user              |
 
-### `POST /api/users` — Create a user
+### `POST /api/users` — Self-registration
 
 **Request body (JSON):**
 
@@ -160,11 +238,11 @@ User data is persisted in a local `users.json` file and cached in the `users` Ca
 {
   "username": "jane",
   "email": "jane@example.com",
-  "role": "USER"
+  "password": "mypassword"
 }
 ```
 
-> `username` and `email` are required. `role` defaults to `USER` when omitted.
+> `username`, `email`, and `password` are required. New registrations are always assigned the `USER` role.
 
 **Success response (`200 OK`):**
 
@@ -181,15 +259,15 @@ User data is persisted in a local `users.json` file and cached in the `users` Ca
 
 ```json
 {
-  "error": "username and email are required"
+  "error": "username, email and password are required"
 }
 ```
 
-### `PUT /api/users/{id}` — Update a user
+### `PUT /api/users/{id}` — Update a user (ADMIN only)
 
-Accepts the same JSON body as the create endpoint. Returns `404 Not Found` if no user with the given id exists.
+Accepts the same JSON body as the create endpoint except `password`. Returns `404 Not Found` if no user with the given id exists.
 
-### `DELETE /api/users/{id}`
+### `DELETE /api/users/{id}` (ADMIN only)
 
 **Success response (`200 OK`):**
 
@@ -233,21 +311,27 @@ src/
 │       ├── Entity/
 │       │   ├── Resources.java               # Placeholder entity class
 │       │   ├── Subscription.java            # Subscription entity (name, email, address)
-│       │   └── User.java                    # User entity (id, username, email, role)
+│       │   └── User.java                    # User entity (id, username, email, role, password)
 │       ├── config/
-│       │   └── CacheConfig.java             # Caffeine cache configuration (subscriptions + idempotency + users)
+│       │   ├── CacheConfig.java             # Caffeine cache configuration (subscriptions + idempotency + users)
+│       │   └── SecurityConfig.java          # Spring Security filter chain, RBAC rules, JWT integration
 │       ├── controller/
+│       │   ├── AuthController.java          # POST /api/auth/login – returns a signed JWT
 │       │   ├── HomeController.java          # GET /
 │       │   ├── RequestController.java       # GET /request
 │       │   ├── ResourcesController.java     # POST /api/send-request (with idempotency support)
-│       │   └── UserController.java          # CRUD /api/users endpoints
+│       │   └── UserController.java          # CRUD /api/users endpoints (role-protected)
+│       ├── security/
+│       │   ├── AppUserDetailsService.java   # Spring Security UserDetailsService adapter
+│       │   ├── JwtAuthenticationFilter.java # Per-request JWT validation filter
+│       │   └── JwtUtil.java                 # JWT generation and validation (JJWT 0.12.6)
 │       └── service/
 │           ├── DataBaseService.java         # JSON-file persistence with @Cacheable/@CacheEvict
 │           ├── EmailService.java            # Sends HTML emails via Gmail SMTP
 │           ├── IdempotencyService.java      # Idempotency key lookup and storage
 │           └── UserService.java             # User CRUD logic backed by users.json
 └── resources/
-    ├── application.properties               # App configuration & email credentials
+    ├── application.properties               # App configuration, email & JWT credentials
     ├── templates/
     │   ├── index.html                       # Home page template
     │   └── request.html                     # Request form template
@@ -263,6 +347,7 @@ src/
         ├── DisasterReliefApplicationTests.java  # Context load smoke test
         ├── CachingTest.java                     # Verifies @Cacheable/@CacheEvict behaviour
         ├── IdempotencyTest.java                 # Verifies idempotency key deduplication
+        ├── SecurityTest.java                    # Verifies JWT auth and RBAC rules
         └── UserManagementTest.java              # Verifies user CRUD and cache behaviour
 ```
 
@@ -273,5 +358,6 @@ src/
 - **Mock database:** The current persistence layer writes to local JSON files (`data.json`, `users.json`). Replace `DataBaseService` and `UserService` with a real database (e.g., MySQL / PostgreSQL) and configure the data source in `application.properties`.
 - **Hardcoded recipient email:** The confirmation email is sent to a hardcoded recipient address inside `ResourcesController`. This should be made configurable (e.g., driven by the request payload or an `application.properties` value).
 - **Basic input sanitisation:** User-supplied fields are sanitised with `HtmlUtils.htmlEscape` to prevent XSS. Full server-side validation (e.g., via `jakarta.validation`) is not yet implemented.
-- **No authentication:** The user management API is currently open. Adding Spring Security (JWT / session-based auth) and role-based access control is recommended before any production use.
+- **JWT secret management:** The default `jwt.secret` in `application.properties` is a placeholder. In production, override it with a strong random key (≥ 32 characters) via an environment variable or a secrets manager, and never commit real secrets to source control.
+- **Admin account provisioning:** There is currently no built-in mechanism to bootstrap an ADMIN account. Insert an admin user directly into `users.json` (with a BCrypt-hashed password) before the first run, or add a dedicated admin-creation endpoint protected by an environment-level secret.
 - **Port forwarding:** To expose the application publicly without sharing your IP, you can use a tunneling service such as [ngrok](https://ngrok.com/) or [Serveo](https://serveo.net/).
