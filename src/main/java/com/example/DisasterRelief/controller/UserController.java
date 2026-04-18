@@ -1,7 +1,10 @@
 package com.example.DisasterRelief.controller;
 
 import com.example.DisasterRelief.Entity.User;
+import com.example.DisasterRelief.dto.CreateUserRequest;
+import com.example.DisasterRelief.dto.UpdateUserRequest;
 import com.example.DisasterRelief.service.UserService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -54,32 +57,21 @@ public class UserController {
      * (only an ADMIN can create ADMIN accounts via a separate flow).
      */
     @PostMapping
-    public ResponseEntity<?> createUser(@RequestBody Map<String, String> body) {
-        String username = HtmlUtils.htmlEscape(body.getOrDefault("username", ""));
-        String email = HtmlUtils.htmlEscape(body.getOrDefault("email", ""));
-        String password = body.getOrDefault("password", "");
+    public ResponseEntity<?> createUser(@Valid @RequestBody CreateUserRequest body) {
+        String username = HtmlUtils.htmlEscape(body.getUsername());
+        String email = HtmlUtils.htmlEscape(body.getEmail());
 
-        if (username.isBlank() || email.isBlank() || password.isBlank()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "username, email and password are required"));
-        }
-
-        User created = userService.createUser(username, email, "USER", password);
+        User created = userService.createUser(username, email, "USER", body.getPassword());
         return ResponseEntity.ok(toResponse(created));
     }
 
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{id}")
     public ResponseEntity<?> updateUser(@PathVariable String id,
-                                        @RequestBody Map<String, String> body) {
-        String username = HtmlUtils.htmlEscape(body.getOrDefault("username", ""));
-        String email = HtmlUtils.htmlEscape(body.getOrDefault("email", ""));
-        String role = HtmlUtils.htmlEscape(body.getOrDefault("role", "USER"));
-
-        if (username.isBlank() || email.isBlank()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "username and email are required"));
-        }
+                                        @Valid @RequestBody UpdateUserRequest body) {
+        String username = HtmlUtils.htmlEscape(body.getUsername());
+        String email = HtmlUtils.htmlEscape(body.getEmail());
+        String role = HtmlUtils.htmlEscape(body.getRole());
 
         Optional<User> updated = userService.updateUser(id, username, email, role);
         return updated.map(u -> ResponseEntity.ok(toResponse(u)))
@@ -96,5 +88,3 @@ public class UserController {
         return ResponseEntity.notFound().build();
     }
 }
-
-

@@ -12,10 +12,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.HtmlUtils;
 
+import com.example.DisasterRelief.dto.ReliefRequestDto;
 import com.example.DisasterRelief.service.EmailService;
 import com.example.DisasterRelief.service.IdempotencyService;
 
 import jakarta.mail.MessagingException;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api")
@@ -29,7 +31,7 @@ public class ResourcesController {
 
     @PostMapping("/send-request")
     public ResponseEntity<Map<String, String>> handleRequest(
-            @RequestBody Map<String, Object> requestData,
+            @Valid @RequestBody ReliefRequestDto requestData,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey)
             throws MessagingException {
 
@@ -40,12 +42,12 @@ public class ResourcesController {
             }
         }
 
-        String name = HtmlUtils.htmlEscape((String) requestData.getOrDefault("name", "Unknown"));
-        String address = HtmlUtils.htmlEscape((String) requestData.getOrDefault("address", "Unknown"));
-        int towel = safeParseInt(requestData.get("towel"));
-        int instantNoodles = safeParseInt(requestData.get("instantNoodles"));
-        int tissuePaper = safeParseInt(requestData.get("tissuePaper"));
-        int water = safeParseInt(requestData.get("water"));
+        String name = HtmlUtils.htmlEscape(requestData.getName());
+        String address = HtmlUtils.htmlEscape(requestData.getAddress());
+        int towel = requestData.getTowel();
+        int instantNoodles = requestData.getInstantNoodles();
+        int tissuePaper = requestData.getTissuePaper();
+        int water = requestData.getWater();
 
         String htmlContent = "<html>" +
         "<body style='margin:0; padding:0; font-family: Arial, sans-serif;'>" +
@@ -79,15 +81,5 @@ public class ResourcesController {
         }
 
         return ResponseEntity.ok(response);
-    }
-
-    private int safeParseInt(Object value) {
-        if (value == null) return 0;
-        if (value instanceof Number) return ((Number) value).intValue();
-        try {
-            return Integer.parseInt(value.toString());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
     }
 }

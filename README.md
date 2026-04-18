@@ -16,6 +16,7 @@ A Spring Boot prototype for coordinating disaster relief resource requests. User
 - [API Reference](#api-reference)
 - [User Management API](#user-management-api)
 - [Caching & Idempotency](#caching--idempotency)
+- [Validation](#validation)
 - [Project Structure](#project-structure)
 - [Known Limitations & Future Work](#known-limitations--future-work)
 
@@ -301,6 +302,58 @@ Spring Cache is enabled via `@EnableCaching` on the main application class and i
 
 ---
 
+## Validation
+
+All API endpoints enforce server-side validation via **`jakarta.validation`** annotations on dedicated DTO classes. When a request body fails validation, the API returns `400 Bad Request` with a structured error body:
+
+```json
+{
+  "error": "Validation failed",
+  "details": [
+    "name: Name is required",
+    "address: Address is required"
+  ]
+}
+```
+
+### Validation rules per endpoint
+
+#### `POST /api/send-request`
+
+| Field           | Constraint                             |
+|-----------------|----------------------------------------|
+| `name`          | Required, max 100 characters           |
+| `address`       | Required, max 200 characters           |
+| `towel`         | Integer ≥ 0                            |
+| `instantNoodles`| Integer ≥ 0                            |
+| `tissuePaper`   | Integer ≥ 0                            |
+| `water`         | Integer ≥ 0                            |
+
+#### `POST /api/users` (self-registration)
+
+| Field      | Constraint                                      |
+|------------|-------------------------------------------------|
+| `username` | Required, 3–50 characters                       |
+| `email`    | Required, must be a valid email address         |
+| `password` | Required, at least 8 characters                 |
+
+#### `PUT /api/users/{id}` (ADMIN only)
+
+| Field      | Constraint                                      |
+|------------|-------------------------------------------------|
+| `username` | Required, 3–50 characters                       |
+| `email`    | Required, must be a valid email address         |
+| `role`     | Must be `USER` or `ADMIN`                       |
+
+#### `POST /api/auth/login`
+
+| Field      | Constraint |
+|------------|------------|
+| `username` | Required   |
+| `password` | Required   |
+
+---
+
 ## Project Structure
 
 ```
@@ -321,6 +374,13 @@ src/
 │       │   ├── RequestController.java       # GET /request
 │       │   ├── ResourcesController.java     # POST /api/send-request (with idempotency support)
 │       │   └── UserController.java          # CRUD /api/users endpoints (role-protected)
+│       ├── dto/
+│       │   ├── CreateUserRequest.java       # Validated DTO for POST /api/users
+│       │   ├── LoginRequest.java            # Validated DTO for POST /api/auth/login
+│       │   ├── ReliefRequestDto.java        # Validated DTO for POST /api/send-request
+│       │   └── UpdateUserRequest.java       # Validated DTO for PUT /api/users/{id}
+│       ├── exception/
+│       │   └── GlobalExceptionHandler.java  # Translates validation errors to 400 Bad Request responses
 │       ├── security/
 │       │   ├── AppUserDetailsService.java   # Spring Security UserDetailsService adapter
 │       │   ├── JwtAuthenticationFilter.java # Per-request JWT validation filter
@@ -348,7 +408,8 @@ src/
         ├── CachingTest.java                     # Verifies @Cacheable/@CacheEvict behaviour
         ├── IdempotencyTest.java                 # Verifies idempotency key deduplication
         ├── SecurityTest.java                    # Verifies JWT auth and RBAC rules
-        └── UserManagementTest.java              # Verifies user CRUD and cache behaviour
+        ├── UserManagementTest.java              # Verifies user CRUD and cache behaviour
+        └── ValidationTest.java                  # Verifies jakarta.validation constraints on all endpoints
 ```
 
 ---
@@ -357,7 +418,7 @@ src/
 
 - **Mock database:** The current persistence layer writes to local JSON files (`data.json`, `users.json`). Replace `DataBaseService` and `UserService` with a real database (e.g., MySQL / PostgreSQL) and configure the data source in `application.properties`.
 - **Hardcoded recipient email:** The confirmation email is sent to a hardcoded recipient address inside `ResourcesController`. This should be made configurable (e.g., driven by the request payload or an `application.properties` value).
-- **Basic input sanitisation:** User-supplied fields are sanitised with `HtmlUtils.htmlEscape` to prevent XSS. Full server-side validation (e.g., via `jakarta.validation`) is not yet implemented.
+- **Basic input sanitisation:** User-supplied string fields are sanitised with `HtmlUtils.htmlEscape` to prevent XSS. Full server-side validation is implemented via `jakarta.validation` annotations on dedicated DTO classes (see [Validation](#validation) section above).
 - **JWT secret management:** The default `jwt.secret` in `application.properties` is a placeholder. In production, override it with a strong random key (≥ 32 characters) via an environment variable or a secrets manager, and never commit real secrets to source control.
 - **Admin account provisioning:** There is currently no built-in mechanism to bootstrap an ADMIN account. Insert an admin user directly into `users.json` (with a BCrypt-hashed password) before the first run, or add a dedicated admin-creation endpoint protected by an environment-level secret.
 - **Port forwarding:** To expose the application publicly without sharing your IP, you can use a tunneling service such as [ngrok](https://ngrok.com/) or [Serveo](https://serveo.net/).
