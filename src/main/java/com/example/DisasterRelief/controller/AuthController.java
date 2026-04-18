@@ -1,6 +1,8 @@
 package com.example.DisasterRelief.controller;
 
+import com.example.DisasterRelief.dto.LoginRequest;
 import com.example.DisasterRelief.security.JwtUtil;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -44,13 +46,10 @@ public class AuthController {
      * <pre>{ "error": "Invalid username or password" }</pre>
      */
     @PostMapping("/login")
-    public ResponseEntity<Map<String, String>> login(@RequestBody Map<String, String> body) {
-        String username = body.getOrDefault("username", "");
-        String password = body.getOrDefault("password", "");
-
+    public ResponseEntity<Map<String, String>> login(@Valid @RequestBody LoginRequest body) {
         try {
             Authentication authentication = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(username, password));
+                    new UsernamePasswordAuthenticationToken(body.getUsername(), body.getPassword()));
 
             // Extract the first authority (there is always exactly one role per user)
             String role = authentication.getAuthorities().stream()
