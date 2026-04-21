@@ -1,9 +1,20 @@
 package com.example.DisasterRelief.Entity;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+@Entity
+@Table(name = "app_user")
 public class User {
 
+    @Id
     private String id;
+
+    @Column(unique = true, nullable = false)
     private String username;
+
     private String email;
     private String role;
     /** BCrypt-hashed password. Never returned in API responses. */

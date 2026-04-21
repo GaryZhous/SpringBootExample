@@ -1,5 +1,6 @@
 package com.example.DisasterRelief;
 
+import com.example.DisasterRelief.repository.UserRepository;
 import com.example.DisasterRelief.service.EmailService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -11,8 +12,6 @@ import org.springframework.cache.CacheManager;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
-
-import java.io.File;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -29,6 +28,9 @@ class ValidationTest {
     private MockMvc mockMvc;
 
     @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
     private CacheManager cacheManager;
 
     @MockBean
@@ -37,10 +39,7 @@ class ValidationTest {
     @AfterEach
     void cleanup() {
         cacheManager.getCacheNames().forEach(name -> cacheManager.getCache(name).clear());
-        File usersFile = new File("users.json");
-        if (usersFile.exists() && !usersFile.delete()) {
-            usersFile.deleteOnExit();
-        }
+        userRepository.deleteAll();
     }
 
     // ── POST /api/send-request ────────────────────────────────────────────────

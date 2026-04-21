@@ -1,6 +1,7 @@
 package com.example.DisasterRelief;
 
 import com.example.DisasterRelief.Entity.Subscription;
+import com.example.DisasterRelief.repository.SubscriptionRepository;
 import com.example.DisasterRelief.service.DataBaseService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -8,8 +9,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.interceptor.SimpleKey;
-
-import java.io.File;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -20,15 +19,15 @@ class CachingTest {
     private DataBaseService dataBaseService;
 
     @Autowired
+    private SubscriptionRepository subscriptionRepository;
+
+    @Autowired
     private CacheManager cacheManager;
 
     @AfterEach
     void evictAllCaches() {
         cacheManager.getCacheNames().forEach(name -> cacheManager.getCache(name).clear());
-        File dataFile = new File("data.json");
-        if (dataFile.exists() && !dataFile.delete()) {
-            dataFile.deleteOnExit();
-        }
+        subscriptionRepository.deleteAll();
     }
 
     @Test
