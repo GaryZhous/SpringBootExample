@@ -1,6 +1,7 @@
 package com.example.DisasterRelief;
 
 import com.example.DisasterRelief.Entity.User;
+import com.example.DisasterRelief.repository.UserRepository;
 import com.example.DisasterRelief.service.UserService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -9,7 +10,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.interceptor.SimpleKey;
 
-import java.io.File;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,15 +22,15 @@ class UserManagementTest {
     private UserService userService;
 
     @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
     private CacheManager cacheManager;
 
     @AfterEach
     void cleanup() {
         cacheManager.getCacheNames().forEach(name -> cacheManager.getCache(name).clear());
-        File usersFile = new File("users.json");
-        if (usersFile.exists() && !usersFile.delete()) {
-            usersFile.deleteOnExit();
-        }
+        userRepository.deleteAll();
     }
 
     @Test

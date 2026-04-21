@@ -1,16 +1,13 @@
 package com.example.DisasterRelief.service;
 
 import com.example.DisasterRelief.Entity.User;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.DisasterRelief.repository.UserRepository;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,29 +15,25 @@ import java.util.UUID;
 @Service
 public class UserService {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private final File file = new File("users.json");
+    private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public UserService(PasswordEncoder passwordEncoder) {
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+        this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
     @Cacheable("users")
     public List<User> getAllUsers() {
-        return readFromFile();
+        return userRepository.findAll();
     }
 
     public Optional<User> getUserById(String id) {
-        return readFromFile().stream()
-                .filter(u -> u.getId().equals(id))
-                .findFirst();
+        return userRepository.findById(id);
     }
 
     public Optional<User> getUserByUsername(String username) {
-        return readFromFile().stream()
-                .filter(u -> u.getUsername().equals(username))
-                .findFirst();
+        return userRepository.findByUsername(username);
     }
 
     @CacheEvict(value = "users", allEntries = true)
@@ -49,60 +42,34 @@ public class UserService {
     }
 
     @CacheEvict(value = "users", allEntries = true)
+    @Transactional
     public User createUser(String username, String email, String role, String rawPassword) {
-        List<User> users = readFromFile();
         String hashedPassword = (rawPassword != null && !rawPassword.isBlank())
                 ? passwordEncoder.encode(rawPassword)
                 : null;
         User user = new User(UUID.randomUUID().toString(), username, email, role, hashedPassword);
-        users.add(user);
-        writeToFile(users);
-        return user;
+        return userRepository.save(user);
     }
 
     @CacheEvict(value = "users", allEntries = true)
+    @Transactional
     public Optional<User> updateUser(String id, String username, String email, String role) {
-        List<User> users = readFromFile();
-        for (User u : users) {
-            if (u.getId().equals(id)) {
-                u.setUsername(username);
-                u.setEmail(email);
-                u.setRole(role);
-                writeToFile(users);
-                return Optional.of(u);
-            }
-        }
-        return Optional.empty();
+        return userRepository.findById(id).map(u -> {
+            u.setUsername(username);
+            u.setEmail(email);
+            u.setRole(role);
+            return userRepository.save(u);
+        });
     }
 
     @CacheEvict(value = "users", allEntries = true)
+    @Transactional
     public boolean deleteUser(String id) {
-        List<User> users = readFromFile();
-        boolean removed = users.removeIf(u -> u.getId().equals(id));
-        if (removed) {
-            writeToFile(users);
+        if (!userRepository.existsById(id)) {
+            return false;
         }
-        return removed;
-    }
-
-    private List<User> readFromFile() {
-        try {
-            if (!file.exists()) {
-                return new ArrayList<>();
-            }
-            return objectMapper.readValue(file, new TypeReference<>() {});
-        } catch (IOException e) {
-            e.printStackTrace();
-            return new ArrayList<>();
-        }
-    }
-
-    private void writeToFile(List<User> users) {
-        try {
-            objectMapper.writeValue(file, users);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        userRepository.deleteById(id);
+        return true;
     }
 }
 

@@ -1,6 +1,6 @@
 package com.example.DisasterRelief;
 
-import com.example.DisasterRelief.Entity.User;
+import com.example.DisasterRelief.repository.UserRepository;
 import com.example.DisasterRelief.security.JwtUtil;
 import com.example.DisasterRelief.service.UserService;
 import org.junit.jupiter.api.AfterEach;
@@ -15,8 +15,6 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.example.DisasterRelief.service.EmailService;
-
-import java.io.File;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -44,6 +42,9 @@ class SecurityTest {
     private UserService userService;
 
     @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
     private CacheManager cacheManager;
 
     @MockBean
@@ -52,10 +53,7 @@ class SecurityTest {
     @AfterEach
     void cleanup() {
         cacheManager.getCacheNames().forEach(name -> cacheManager.getCache(name).clear());
-        File usersFile = new File("users.json");
-        if (usersFile.exists() && !usersFile.delete()) {
-            usersFile.deleteOnExit();
-        }
+        userRepository.deleteAll();
     }
 
     // ── Unauthenticated access ────────────────────────────────────────────────

@@ -1,62 +1,38 @@
 package com.example.DisasterRelief.service;
 
-/*mockup database service using jackson databind*/
 import com.example.DisasterRelief.Entity.Subscription;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.DisasterRelief.repository.SubscriptionRepository;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 
 @Service
 public class DataBaseService {
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private final File file = new File("data.json");
+
+    private final SubscriptionRepository subscriptionRepository;
+
+    public DataBaseService(SubscriptionRepository subscriptionRepository) {
+        this.subscriptionRepository = subscriptionRepository;
+    }
 
     @Cacheable("subscriptions")
     public List<Subscription> getAllSubscriptions() {
-        return readFromFile();
+        return subscriptionRepository.findAll();
     }
 
     @CacheEvict(value = "subscriptions", allEntries = true)
+    @Transactional
     public void saveSubscription(Subscription subscription) {
-        List<Subscription> subscriptions = readFromFile();
-        subscriptions.add(subscription);
-        writeToFile(subscriptions);
+        subscriptionRepository.save(subscription);
     }
 
     @CacheEvict(value = "subscriptions", allEntries = true)
+    @Transactional
     public boolean deleteSubscription(String email) {
-        List<Subscription> subscriptions = readFromFile();
-        boolean removed = subscriptions.removeIf(sub -> sub.getEmail().equals(email));
-        if (removed) {
-            writeToFile(subscriptions);
-        }
-        return removed;
-    }
-
-    private List<Subscription> readFromFile() {
-        try {
-            if (!file.exists()) {
-                return new ArrayList<>();
-            }
-            return objectMapper.readValue(file, new TypeReference<>() {});
-        } catch (IOException e) {
-            e.printStackTrace();
-            return new ArrayList<>();
-        }
-    }
-
-    private void writeToFile(List<Subscription> subscriptions) {
-        try {
-            objectMapper.writeValue(file, subscriptions);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        int deleted = subscriptionRepository.deleteByEmail(email);
+        return deleted > 0;
     }
 }

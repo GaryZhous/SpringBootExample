@@ -24,7 +24,7 @@ A Spring Boot prototype for coordinating disaster relief resource requests. User
 
 ## Overview
 
-This application provides a minimal web front end and REST back end for managing disaster relief supply requests, targeted at flood-impacted regions. When a user submits a request, the backend sends an HTML-formatted confirmation email via Gmail's SMTP service. The application also includes a JSON-file-backed subscription store with Caffeine caching, idempotent request processing via a client-supplied `Idempotency-Key` header, a full user management API, and **JWT-based authentication with role-based access control**.
+This application provides a minimal web front end and REST back end for managing disaster relief supply requests, targeted at flood-impacted regions. When a user submits a request, the backend sends an HTML-formatted confirmation email via Gmail's SMTP service. The application also includes a JPA-backed subscription store with Caffeine caching, idempotent request processing via a client-supplied `Idempotency-Key` header, a full user management API, and **JWT-based authentication with role-based access control**.
 
 ---
 
@@ -36,7 +36,7 @@ This application provides a minimal web front end and REST back end for managing
 | Framework     | Spring Boot 3.4.1                                    |
 | Templating    | Thymeleaf                                            |
 | Email         | Spring Boot Mail + Jakarta Mail (Gmail SMTP)         |
-| Data (mock)   | Jackson ObjectMapper backed by a local JSON file     |
+| Data          | Spring Data JPA + H2 (in-memory, default) — switchable to MySQL / PostgreSQL |
 | Caching       | Spring Cache + Caffeine (managed by Spring Boot BOM) |
 | Security      | Spring Security 6 + JWT (JJWT 0.12.6)               |
 | Build         | Maven (Maven Wrapper included)                       |
@@ -69,6 +69,84 @@ spring.mail.password=your-app-password
 jwt.secret=your-strong-secret-key-at-least-32-chars
 # Token validity in milliseconds (default: 24 h)
 jwt.expiration-ms=86400000
+```
+
+> **Environment variable override:** Spring Boot's [relaxed binding](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.external-config.typesafe-configuration-properties.relaxed-binding) maps environment variables to properties automatically. For example, set `JWT_SECRET=my-secret` to override `jwt.secret` without modifying the properties file.
+
+### Recipient email
+
+The confirmation email is sent to the address configured via:
+
+```properties
+app.recipient-email=authorities@example.com
+```
+
+Override this with the real address of your local coordination team, or set `APP_RECIPIENT_EMAIL` as an environment variable.
+
+### Admin account bootstrap
+
+To automatically create an ADMIN account on first start-up, set all three properties (or the corresponding environment variables):
+
+```properties
+app.admin.username=admin
+app.admin.email=admin@example.com
+app.admin.password=ChangeMe123!
+```
+
+| Environment variable   | Equivalent property      |
+|------------------------|--------------------------|
+| `APP_ADMIN_USERNAME`   | `app.admin.username`     |
+| `APP_ADMIN_EMAIL`      | `app.admin.email`        |
+| `APP_ADMIN_PASSWORD`   | `app.admin.password`     |
+
+If a user with the configured username already exists, the bootstrap is silently skipped.
+
+> **Security note:** Supply the admin password via an environment variable or a secrets manager in production – never commit it to source control.
+
+### Database
+
+By default the application uses an **H2 in-memory database** that requires no external server. Data is lost when the application stops. To persist data across restarts or use a production-grade RDBMS, switch to MySQL or PostgreSQL:
+
+**MySQL:**
+
+```properties
+spring.datasource.url=jdbc:mysql://localhost:3306/disaster_relief?useSSL=false&serverTimezone=UTC
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+spring.datasource.username=your_mysql_user
+spring.datasource.password=your_mysql_password
+spring.jpa.database-platform=org.hibernate.dialect.MySQLDialect
+spring.jpa.hibernate.ddl-auto=update
+```
+
+Add the MySQL driver to `pom.xml` (already present as a commented dependency):
+
+```xml
+<dependency>
+    <groupId>com.mysql</groupId>
+    <artifactId>mysql-connector-j</artifactId>
+    <scope>runtime</scope>
+</dependency>
+```
+
+**PostgreSQL:**
+
+```properties
+spring.datasource.url=jdbc:postgresql://localhost:5432/disaster_relief
+spring.datasource.driver-class-name=org.postgresql.Driver
+spring.datasource.username=your_pg_user
+spring.datasource.password=your_pg_password
+spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect
+spring.jpa.hibernate.ddl-auto=update
+```
+
+Add the PostgreSQL driver to `pom.xml` (already present as a commented dependency):
+
+```xml
+<dependency>
+    <groupId>org.postgresql</groupId>
+    <artifactId>postgresql</artifactId>
+    <scope>runtime</scope>
+</dependency>
 ```
 
 To change the default port (8080), add the following line:
@@ -221,7 +299,7 @@ The API uses **stateless JWT-based authentication**. All requests to protected e
 
 ## User Management API
 
-User data is persisted in a local `users.json` file and cached in the `users` Caffeine cache (10-minute TTL, up to 1 000 entries). Each user has a server-assigned UUID, a username, an email address, a role (`USER` or `ADMIN`), and a BCrypt-hashed password. **Passwords are never included in API responses.**
+User data is persisted in a JPA-managed database (H2 by default, switchable to MySQL / PostgreSQL) and cached in the `users` Caffeine cache (10-minute TTL, up to 1 000 entries). Each user has a server-assigned UUID, a username, an email address, a role (`USER` or `ADMIN`), and a BCrypt-hashed password. **Passwords are never included in API responses.**
 
 | Method | Endpoint            | Auth required | Description                |
 |--------|---------------------|---------------|----------------------------|
@@ -363,8 +441,8 @@ src/
 │       ├── DisasterReliefApplication.java   # Application entry point; enables caching (@EnableCaching)
 │       ├── Entity/
 │       │   ├── Resources.java               # Placeholder entity class
-│       │   ├── Subscription.java            # Subscription entity (name, email, address)
-│       │   └── User.java                    # User entity (id, username, email, role, password)
+│       │   ├── Subscription.java            # JPA entity (name, email, address) – persisted to DB
+│       │   └── User.java                    # JPA entity (id, username, email, role, password)
 │       ├── config/
 │       │   ├── CacheConfig.java             # Caffeine cache configuration (subscriptions + idempotency + users)
 │       │   └── SecurityConfig.java          # Spring Security filter chain, RBAC rules, JWT integration
@@ -381,17 +459,21 @@ src/
 │       │   └── UpdateUserRequest.java       # Validated DTO for PUT /api/users/{id}
 │       ├── exception/
 │       │   └── GlobalExceptionHandler.java  # Translates validation errors to 400 Bad Request responses
+│       ├── repository/
+│       │   ├── SubscriptionRepository.java  # Spring Data JPA repository for Subscription entities
+│       │   └── UserRepository.java          # Spring Data JPA repository for User entities
 │       ├── security/
 │       │   ├── AppUserDetailsService.java   # Spring Security UserDetailsService adapter
 │       │   ├── JwtAuthenticationFilter.java # Per-request JWT validation filter
 │       │   └── JwtUtil.java                 # JWT generation and validation (JJWT 0.12.6)
 │       └── service/
-│           ├── DataBaseService.java         # JSON-file persistence with @Cacheable/@CacheEvict
+│           ├── AdminBootstrapService.java   # Creates an ADMIN account on start-up (if configured)
+│           ├── DataBaseService.java         # Subscription persistence with @Cacheable/@CacheEvict
 │           ├── EmailService.java            # Sends HTML emails via Gmail SMTP
 │           ├── IdempotencyService.java      # Idempotency key lookup and storage
-│           └── UserService.java             # User CRUD logic backed by users.json
+│           └── UserService.java             # User CRUD logic backed by JPA
 └── resources/
-    ├── application.properties               # App configuration, email & JWT credentials
+    ├── application.properties               # App configuration, email, JWT & database credentials
     ├── templates/
     │   ├── index.html                       # Home page template
     │   └── request.html                     # Request form template
@@ -416,9 +498,10 @@ src/
 
 ## Known Limitations & Future Work
 
-- **Mock database:** The current persistence layer writes to local JSON files (`data.json`, `users.json`). Replace `DataBaseService` and `UserService` with a real database (e.g., MySQL / PostgreSQL) and configure the data source in `application.properties`.
-- **Hardcoded recipient email:** The confirmation email is sent to a hardcoded recipient address inside `ResourcesController`. This should be made configurable (e.g., driven by the request payload or an `application.properties` value).
-- **Basic input sanitisation:** User-supplied string fields are sanitised with `HtmlUtils.htmlEscape` to prevent XSS. Full server-side validation is implemented via `jakarta.validation` annotations on dedicated DTO classes (see [Validation](#validation) section above).
-- **JWT secret management:** The default `jwt.secret` in `application.properties` is a placeholder. In production, override it with a strong random key (≥ 32 characters) via an environment variable or a secrets manager, and never commit real secrets to source control.
-- **Admin account provisioning:** There is currently no built-in mechanism to bootstrap an ADMIN account. Insert an admin user directly into `users.json` (with a BCrypt-hashed password) before the first run, or add a dedicated admin-creation endpoint protected by an environment-level secret.
+- **Mock database** ✅ **Resolved** – Persistence is now backed by **Spring Data JPA** with an **H2 in-memory database** by default. Switch to MySQL or PostgreSQL by updating `application.properties` (see [Configuration](#configuration) for the ready-to-use snippets). The `data.json` / `users.json` files are no longer used.
+- **Hardcoded recipient email** ✅ **Resolved** – The confirmation email recipient is now driven by the `app.recipient-email` property (overridable via the `APP_RECIPIENT_EMAIL` environment variable). See [Configuration](#configuration).
+- **Basic input sanitisation** – User-supplied string fields are sanitised with `HtmlUtils.htmlEscape` to prevent XSS. Full server-side validation is implemented via `jakarta.validation` annotations on dedicated DTO classes (see [Validation](#validation) section above).
+- **JWT secret management** ✅ **Resolved** – The `jwt.secret` property can be overridden without code changes using Spring Boot's relaxed binding: set the `JWT_SECRET` environment variable (or any other supported external configuration source such as a secrets manager). The default value in `application.properties` is a placeholder and **must** be replaced with a strong random key (≥ 32 characters) before deploying to production.
+- **Admin account provisioning** ✅ **Resolved** – The `AdminBootstrapService` reads `app.admin.username`, `app.admin.email`, and `app.admin.password` at start-up and creates an ADMIN account if those properties are set and the username does not already exist. Supply the password via the `APP_ADMIN_PASSWORD` environment variable to avoid committing credentials. See [Configuration](#configuration).
 - **Port forwarding:** To expose the application publicly without sharing your IP, you can use a tunneling service such as [ngrok](https://ngrok.com/) or [Serveo](https://serveo.net/).
+

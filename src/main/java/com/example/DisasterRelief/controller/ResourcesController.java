@@ -3,7 +3,7 @@ package com.example.DisasterRelief.controller;
 import java.util.Map;
 import java.util.Optional;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -23,11 +23,16 @@ import jakarta.validation.Valid;
 @RequestMapping("/api")
 public class ResourcesController {
 
-    @Autowired
-    private EmailService emailService;
+    @Value("${app.recipient-email:authorities@example.com}")
+    private String recipientEmail;
 
-    @Autowired
-    private IdempotencyService idempotencyService;
+    private final EmailService emailService;
+    private final IdempotencyService idempotencyService;
+
+    public ResourcesController(EmailService emailService, IdempotencyService idempotencyService) {
+        this.emailService = emailService;
+        this.idempotencyService = idempotencyService;
+    }
 
     @PostMapping("/send-request")
     public ResponseEntity<Map<String, String>> handleRequest(
@@ -72,7 +77,7 @@ public class ResourcesController {
         "</div>" +
         "</body>" +
         "</html>";
-        emailService.sendEmail("sihan.zhou@mail.utoronto.ca", "Disaster Relief Request from " + name, htmlContent);
+        emailService.sendEmail(recipientEmail, "Disaster Relief Request from " + name, htmlContent);
 
         Map<String, String> response = Map.of("message", "Request received successfully!");
 
