@@ -497,11 +497,5 @@ src/
 ---
 
 ## Known Limitations & Future Work
-
-- **Mock database** ✅ **Resolved** – Persistence is now backed by **Spring Data JPA** with an **H2 in-memory database** by default. Switch to MySQL or PostgreSQL by updating `application.properties` (see [Configuration](#configuration) for the ready-to-use snippets). The `data.json` / `users.json` files are no longer used.
-- **Hardcoded recipient email** ✅ **Resolved** – The confirmation email recipient is now driven by the `app.recipient-email` property (overridable via the `APP_RECIPIENT_EMAIL` environment variable). See [Configuration](#configuration).
-- **Basic input sanitisation** – User-supplied string fields are sanitised with `HtmlUtils.htmlEscape` to prevent XSS. Full server-side validation is implemented via `jakarta.validation` annotations on dedicated DTO classes (see [Validation](#validation) section above).
-- **JWT secret management** ✅ **Resolved** – The `jwt.secret` property can be overridden without code changes using Spring Boot's relaxed binding: set the `JWT_SECRET` environment variable (or any other supported external configuration source such as a secrets manager). The default value in `application.properties` is a placeholder and **must** be replaced with a strong random key (≥ 32 characters) before deploying to production.
-- **Admin account provisioning** ✅ **Resolved** – The `AdminBootstrapService` reads `app.admin.username`, `app.admin.email`, and `app.admin.password` at start-up and creates an ADMIN account if those properties are set and the username does not already exist. Supply the password via the `APP_ADMIN_PASSWORD` environment variable to avoid committing credentials. See [Configuration](#configuration).
 - **Port forwarding:** To expose the application publicly without sharing your IP, you can use a tunneling service such as [ngrok](https://ngrok.com/) or [Serveo](https://serveo.net/).
 
