@@ -496,6 +496,6 @@ src/
 
 ---
 
-## Known Limitations & Future Work
+## Future Work
 - **Port forwarding:** To expose the application publicly without sharing your IP, you can use a tunneling service such as [ngrok](https://ngrok.com/) or [Serveo](https://serveo.net/).
 
